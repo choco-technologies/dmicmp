@@ -14,6 +14,28 @@ target_include_directories(${DMOD_MODULE_NAME} PRIVATE
 
 target_link_libraries(${DMOD_MODULE_NAME} dmicmp_if)
 
+# dmip:         dmip_v4_build_header()/_v6_build_header()/dmip_checksum()
+#               to hand-build fixture packets/messages, plus
+#               DMIP_PROTO_ICMP/_ICMPV6/_UDP and DMIP_DEFAULT_TTL/
+#               _HOP_LIMIT.
+# dmnetbridge:  drives dmicmp's registered packet_received DIF
+#               implementation directly via Dmod_GetNextDifModule()/
+#               Dmod_GetDifFunction(), the same way
+#               dmudp_test.c's/dmip_test.c's own feed helpers do.
+# dmarp:        fixture ARP cache entries seeded by hand
+#               (dmarp_cache_insert()/_remove()) so dmicmp_v4_send() can
+#               be exercised up to (but not through) a real driver.
+# dmnetif:      the "/dev/null"-backed fixture interface itself
+#               (dmnetif_register()/_unregister()).
+# dmroute:      fixture routes seeded by hand (dmroute_add()/_remove()).
+dmod_link_modules(${DMOD_MODULE_NAME}
+    dmip
+    dmnetbridge
+    dmarp
+    dmnetif
+    dmroute
+)
+
 # Register the test module with ctest - this replays the same two steps CI
 # runs (see .github/templates/ci.yml.template): install the test module's
 # dependencies with dmf-get, then execute it through dmod_loader. The test's

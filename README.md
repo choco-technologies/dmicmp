@@ -7,7 +7,16 @@ dmicmp DMOD library module.
 
 ## Description
 
-TODO: describe what this module does.
+dmicmp builds and parses ICMP messages (RFC 792 for ICMPv4, RFC 4443 for
+ICMPv6) and plugs into [dmip](https://github.com/choco-technologies/dmip)'s
+protocol dispatch: it registers as the handler for ICMP's own IP protocol
+number (answering an incoming Echo Request with an Echo Reply inline, no
+extra thread needed) and as dmip's *default* handler, replying with an
+ICMPv4 Destination Unreachable to any IP packet whose protocol nobody
+else claimed. See [docs/dmicmp.md](docs/dmicmp.md) for the full design
+rationale, including the deliberate, temporary IPv6-send gap (no
+`dmip_v6_send()` yet) and the echo-reply listener registry used for
+sending our own Echo Request ("ping").
 
 ## Building
 
@@ -50,21 +59,34 @@ dmod_loader build/dmf/test_dmicmp.dmf
 
 ## Usage
 
-<TBD>
-
-This library module provides functions that can be used by other modules:
+dmicmp needs no setup from other modules to do its core job (answering
+pings, reporting an unclaimed protocol) - it registers itself with dmip
+automatically in `dmod_init()`. A module that wants to send its own ping
+or report its own delivery failure calls it directly:
 
 ```c
 #include "dmicmp.h"
+
+/* Report "port unreachable" for a UDP datagram nobody's listening for */
+dmicmp_v4_send_dest_unreachable(dmicmp_v4_dest_unreachable_port,
+                                 original_ip_packet, original_ip_packet_len,
+                                 DMARP_DEFAULT_TIMEOUT_MS);
+
+/* Send a ping and find out about the reply */
+dmicmp_register_echo_listener(my_identifier, my_echo_reply_handler);
+dmicmp_v4_send_echo_request(&dst, my_identifier, 1, NULL, 0, DMARP_DEFAULT_TIMEOUT_MS);
 ```
 
 ## API
 
 | Function | Description |
 |----------|-------------|
-| `dmicmp_create()` | Create a new `dmicmp_t` instance. |
-| `dmicmp_destroy()` | Destroy an instance created by `_create()`. |
-| `dmicmp_is_valid()` | Check whether a handle is a valid instance. |
+| `dmicmp_build_header()` / `_parse_header()` | Build/parse the 8-byte common ICMP header |
+| `dmicmp_v4_checksum_valid()` / `_v6_checksum_valid()` | Verify a received ICMP message's checksum |
+| `dmicmp_v4_send_error()` | General-purpose: send an arbitrary ICMPv4 error message (any type/code) about some undeliverable original packet |
+| `dmicmp_v4_send_dest_unreachable()` | Thin wrapper over `dmicmp_v4_send_error()` for the common Destination Unreachable case |
+| `dmicmp_v4_send_echo_request()` | Send an ICMPv4 Echo Request ("ping") |
+| `dmicmp_register_echo_listener()` / `_unregister_echo_listener()` | Learn about the Echo Reply matching a ping's identifier |
 
 See [include/dmicmp.h](include/dmicmp.h) for the full
 declarations and [docs/api-reference.md](docs/api-reference.md) for the
@@ -74,6 +96,7 @@ complete reference.
 
 See the `docs/` directory:
 
+- **[dmicmp.md](docs/dmicmp.md)** - Design overview and rationale
 - **[api-reference.md](docs/api-reference.md)** - Complete API documentation
 
 View documentation using `dmf-man dmicmp`.

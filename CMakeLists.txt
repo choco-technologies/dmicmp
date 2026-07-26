@@ -72,9 +72,29 @@ target_include_directories(${DMOD_MODULE_NAME}_if INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
-# To depend on another module's headers, use:
-#   dmod_link_modules(${DMOD_MODULE_NAME}
-#       other_module@1.0
-#   )
+# dmip: dmip_send()/_v4_send() do the actual work of transmitting a built
+#       ICMP message - dmicmp only builds/parses/checksums the ICMP
+#       message itself and hands it to dmip, plus dmip_checksum(),
+#       dmip_v4_parse_header() (to read the original IP header out of an
+#       unclaimed/undeliverable packet), and dmip_register_protocol()/
+#       _register_default_protocol() to receive completed IP packets
+#       (see src/dmicmp.c).
+# dmroute: header-only - dmip.h needs dmroute_addr_t (re-exported as
+#          dmip_addr_t) directly, even though dmicmp.c itself never calls
+#          a dmroute_* function (same reason dmudp/dmip link it - see
+#          their own CMakeLists.txt).
+# dmnetif: dmnetif_iface_t, the iface parameter dmip_protocol_handler_t
+#          passes to dmicmp_handle_ip_packet() - dmicmp never calls a
+#          dmnetif_* function itself either.
+# dmlist:  backs the echo listener registry
+# dmosi:   mutex guarding that registry
+dmod_link_modules(${DMOD_MODULE_NAME}
+    dmip
+    dmroute
+    dmnetif
+    dmlist
+    dmosi
+)
+
 enable_testing()
 add_subdirectory(tests)
