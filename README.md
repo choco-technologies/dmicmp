@@ -77,6 +77,13 @@ dmicmp_register_echo_listener(my_identifier, my_echo_reply_handler);
 dmicmp_v4_send_echo_request(&dst, my_identifier, 1, NULL, 0, DMARP_DEFAULT_TIMEOUT_MS);
 ```
 
+## Tools
+
+- **[tools/ping](tools/ping/README.md)** - CLI to send ICMPv4 Echo
+  Requests to a host and report the replies, built on the API below.
+  It's its own Application-type DMOD module (`ping`), released alongside
+  `dmicmp` itself in every tagged release.
+
 ## API
 
 | Function | Description |
@@ -112,6 +119,9 @@ dmicmp/
 ├── tests/
 │   ├── CMakeLists.txt
 │   └── dmicmp_test.c
+├── tools/
+│   ├── CMakeLists.txt
+│   └── ping/          # ping CLI - its own Application-type module, see tools/ping/README.md
 ├── CMakeLists.txt
 ├── Makefile
 ├── dmicmp.dmr
