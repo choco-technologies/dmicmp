@@ -6,6 +6,7 @@ Welcome to the dmicmp module documentation.
 
 - **[dmicmp.md](dmicmp.md)** - Design overview and rationale
 - **[api-reference.md](api-reference.md)** - Complete API documentation
+- **[service.md](service.md)** - Running ICMP echo response as a `dmsystem` service
 
 ## Quick Reference
 
