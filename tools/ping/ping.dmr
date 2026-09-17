@@ -1,0 +1,45 @@
+# DMOD Resource File for ping
+# This file specifies where resources should be installed
+#
+# ping lives nested under dmicmp/tools/ping rather than being its own
+# top-level repo, so ${repo_dir}/${build_dir} below (which always resolve
+# to the dmicmp repo/build root, not this subdirectory) are prefixed with
+# tools/ping - same convention dmnet/tools/ifconfig/ifconfig.dmr uses.
+
+# === Core Module ===
+# Main module file - always installed
+dmf=./${module}.dmf => ${destination}/${module}.dmf [origin=${dmf_dir}/${module}.dmf]
+
+# Compressed module
+dmfc=./${module}.dmfc => ${destination}/${module}.dmfc [origin=${build_dir}/dmfc/${module}.dmfc]
+
+# Dependencies file (if exists)
+dmd=./${module}.dmd => ${destination}/${module}.dmd [origin=${dmf_dir}/${module}.dmd]
+
+# Version information
+version=./${module}_version.txt => ${destination}/${module}_version.txt [origin=${dmf_dir}/${module}_version.txt]
+
+# === Documentation ===
+# Module documentation in markdown format for dmf-man tool
+docs=./docs => ${destination}/${module}/docs [origin=${repo_dir}/tools/ping/docs]
+
+# README file
+readme=./README.md => ${destination}/${module}/README.md [origin=${repo_dir}/tools/ping/README.md]
+
+# === Header Files ===
+# No committed include/ dir of its own (its API is dmicmp's, see the
+# top-level dmicmp module) - just the generated module definitions header
+# every DMOD module gets, so dmf-man/consumers can still see it.
+# Destination must be a full *file* path (not a bare "include" dir) since
+# there's no separate directory-origin here to tell the packaging tool to
+# treat it as one - see dmicmp.dmr's inc= entry for the directory+file
+# combined case.
+inc=./include/${module}_defs.h => ${destination}/${module}/include/${module}_defs.h [origin=${build_dir}/tools/ping/${module}_defs.h]
+
+# === License ===
+# License file - shared at the dmicmp repo root (same "nested module
+# shares the parent repo's LICENSE" convention as dmnet/tools/ifconfig)
+license=./LICENSE => ${destination}/${module}/LICENSE [origin=${repo_dir}/LICENSE]
+
+# Adding itself
+dmr=./${module}.dmr => ${destination}/${module}/${module}.dmr [origin=${repo_dir}/tools/ping/${module}.dmr]
