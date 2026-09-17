@@ -1,0 +1,11 @@
+#!/bin/dmell
+#
+# icmp-start.dme - loads the dmicmp module, which registers itself with dmip
+# as the ICMPv4/ICMPv6 protocol handler from its own dmod_init() (see
+# ../src/dmicmp.c) - once loaded, this device starts answering ICMP Echo
+# Requests (ping) automatically, with no further setup needed. Run standalone
+# (e.g. `dmell icmp-start.dme`) or as icmp.ini's exec, to load it at boot -
+# see ../docs/service.md.
+
+module load dmicmp
+exit $?

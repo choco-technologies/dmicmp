@@ -1,0 +1,10 @@
+#!/bin/dmell
+#
+# icmp-stop.dme - unloads the dmicmp module (dmod_deinit() unregisters it
+# from dmip, see ../src/dmicmp.c), so this device stops answering ICMP Echo
+# Requests (ping) until icmp-start.dme is run again. Not wired into icmp.ini
+# as an "ExecStop" - dmsystem's libsystemd has no such key yet (see
+# ../docs/service.md) - so run this one directly, e.g. `dmell icmp-stop.dme`.
+
+module unload dmicmp
+exit $?
