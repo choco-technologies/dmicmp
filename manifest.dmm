@@ -1,5 +1,11 @@
 # Include dynamically generated versions list from latest release
 $include https://github.com/choco-technologies/dmicmp/releases/download/vlatest/versions.dmm
 
-# Module entry with version placeholder - expanded by $version-available
-dmicmp https://github.com/choco-technologies/dmicmp/releases/download/v<version>/dmicmp-v<version>-<arch_name>.zip
+# Module entries with version placeholder - expanded by $version-available.
+# Besides the dmicmp module itself this repo releases the `ping` CLI from
+# tools/, plus each one's test module - all packaged per full architecture
+# (<arch_name>), since none of them are hardware ports.
+dmicmp      https://github.com/choco-technologies/dmicmp/releases/download/v<version>/dmicmp-v<version>-<arch_name>.zip
+test_dmicmp https://github.com/choco-technologies/dmicmp/releases/download/v<version>/test_dmicmp-v<version>-<arch_name>.zip
+ping        https://github.com/choco-technologies/dmicmp/releases/download/v<version>/ping-v<version>-<arch_name>.zip
+test_ping   https://github.com/choco-technologies/dmicmp/releases/download/v<version>/test_ping-v<version>-<arch_name>.zip
