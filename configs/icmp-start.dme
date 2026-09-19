@@ -1,11 +1,18 @@
 #!/bin/dmell
 #
-# icmp-start.dme - loads the dmicmp module, which registers itself with dmip
-# as the ICMPv4/ICMPv6 protocol handler from its own dmod_init() (see
-# ../src/dmicmp.c) - once loaded, this device starts answering ICMP Echo
-# Requests (ping) automatically, with no further setup needed. Run standalone
-# (e.g. `dmell icmp-start.dme`) or as icmp.ini's exec, to load it at boot -
-# see ../docs/service.md.
+# icmp-start.dme - loads *and enables* the dmicmp module, which registers
+# itself with dmip as the ICMPv4/ICMPv6 protocol handler from its own
+# dmod_init() (see ../src/dmicmp.c). Once enabled, this device answers ICMP
+# Echo Requests (ping) automatically, with no further setup needed. Run
+# standalone (e.g. `dmell icmp-start.dme`) or as icmp.ini's exec, to bring it
+# up at boot - see ../docs/service.md.
+#
+# Both steps are needed and they are not the same thing. Loading only creates
+# the module's context; dmod_init() runs on enable, and so does the pulling in
+# of required modules (dmip here). A module left merely loaded therefore never
+# registers anything and never answers a packet - silently, since nothing it
+# imports has been bound yet, so nothing crashes either.
 
 module load dmicmp
+module enable dmicmp
 exit $?
