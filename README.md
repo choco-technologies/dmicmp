@@ -86,15 +86,14 @@ dmicmp_v4_send_echo_request(&dst, my_identifier, 1, NULL, 0, DMARP_DEFAULT_TIMEO
 
 ## Running as a service
 
-dmicmp answers pings as soon as it's loaded, but being a Library-type
-module it has no `main()` to spawn on its own - something still needs to
-load it. **[configs/](configs/)** has a
-[dmsystem](https://github.com/choco-technologies/dmsystem)/`libsystemd`
-unit (`icmp.ini`) plus the two `dmell` scripts it runs
-(`icmp-start.dme`/`icmp-stop.dme`, each a one-line `module load`/`module
-unload dmicmp`) so ping response can be enabled at boot and toggled off
-again. See [docs/service.md](docs/service.md) for the full setup and why
-there's no `service stop icmp`.
+dmicmp answers pings as soon as it's loaded and enabled, but being a
+Library-type module it has no `main()` to spawn on its own - something still
+needs to load it. **[configs/](configs/)** has a
+[dmsystem](https://github.com/choco-technologies/dmsystem)/`libsystemd` unit
+(`icmp.ini`, `exec=dmicmp` `type=library`) that registers dmicmp directly as a
+service - no separate loader script needed. `service start icmp`/`service
+stop icmp` load+enable / disable+unload it. See
+[docs/service.md](docs/service.md) for the full setup.
 
 ## API
 
@@ -124,10 +123,8 @@ View documentation using `dmf-man dmicmp`.
 
 ```
 dmicmp/
-├── configs/           # dmsystem unit + dmell scripts to load/unload dmicmp as a service
-│   ├── icmp.ini
-│   ├── icmp-start.dme
-│   └── icmp-stop.dme
+├── configs/           # dmsystem unit (type=library) to register dmicmp as a service
+│   └── icmp.ini
 ├── docs/              # Documentation (markdown format)
 ├── include/           # Public headers
 │   └── dmicmp.h
