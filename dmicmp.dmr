@@ -22,8 +22,9 @@ docs=./docs => ${destination}/${module}/docs [origin=${repo_dir}/docs]
 readme=./README.md => ${destination}/${module}/README.md [origin=${repo_dir}/README.md]
 
 # === Configuration Files ===
-# icmp.ini dmsystem unit + icmp-start.dme/icmp-stop.dme dmell scripts that
-# load/unload dmicmp to turn ICMP echo (ping) response on/off - see docs/service.md
+# icmp.ini dmsystem unit (type=module) that loads/enables dmicmp to turn
+# ICMP echo (ping) response on, and disables/unloads it on "service stop" -
+# see docs/service.md
 configs=./configs => ${destination}/${module}/configs [origin=${repo_dir}/configs]
 
 # === Header Files ===

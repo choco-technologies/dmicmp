@@ -6,70 +6,56 @@ dmicmp needs no setup from other modules to do its core job - it registers
 itself with [dmip](https://github.com/choco-technologies/dmip) automatically
 in `dmod_init()` (see `src/dmicmp.c`), and from that point on answers ICMP
 Echo Requests (ping) with no further calls needed. The catch is exactly that:
-`dmod_init()` only runs once something *loads* dmicmp - nothing does that on
-its own at boot. `configs/` gives
+`dmod_init()` only runs once something *loads and enables* dmicmp - nothing
+does that on its own at boot. `configs/icmp.ini` gives
 [dmsystem](https://github.com/choco-technologies/dmsystem)'s `libsystemd` a
 way to do it automatically.
 
-## Why a `.dme` script instead of `exec=dmicmp` directly
+## `exec=dmicmp`, `type=module`
 
 dmicmp is a **Library**-type DMOD module (see `CMakeLists.txt`), not an
 Application - it has no `main()`, so nothing can spawn it as a process the
-way `libsystemd` starts a unit (`Dmod_RunModuleDetached`, see dmsystem's
-[`app/libsystemd/docs/configuration.md`](https://github.com/choco-technologies/dmsystem/blob/main/app/libsystemd/docs/configuration.md)).
+way `libsystemd` starts a `simple`/`oneshot` unit (`Dmod_RunModuleDetached`).
 What actually needs to happen is "load this module into the running DMOD
-system", which is a different operation - the one
-[`dmell`](https://github.com/choco-technologies/dmell) exposes as its own
-`module load`/`module unload` built-in. `configs/icmp-start.dme` and
-`configs/icmp-stop.dme` are two-line wrappers over exactly that, so a
-`libsystemd` unit (whose `exec` must be something it can spawn) can drive
-them the same way it drives any other unit.
+system, then enable it" - `dmod_init()` (which is what actually registers
+dmicmp with dmip) only runs on *enable*, not on load alone.
+
+`libsystemd` supports this natively via `type=module`: a unit with
+`type=module` has its `exec` loaded and enabled (`Dmod_LoadModuleByName` +
+`Dmod_EnableModule`) when started, and disabled and unloaded
+(`Dmod_DisableModule` + `Dmod_UnloadModule`) when stopped - no separate
+launcher script needed, unlike the process-spawning `simple`/`oneshot` types.
+See dmsystem's
+[configuration docs](https://github.com/choco-technologies/dmsystem/blob/main/app/libsystemd/docs/configuration.md#typemodule-services-backed-by-a-library-module-not-a-process)
+for the full mechanism.
 
 ## Files
 
 | File | Does |
 |------|------|
-| [`configs/icmp-start.dme`](../configs/icmp-start.dme) | `module load dmicmp` - starts answering pings. |
-| [`configs/icmp-stop.dme`](../configs/icmp-stop.dme) | `module unload dmicmp` - stops answering pings. |
-| [`configs/icmp.ini`](../configs/icmp.ini) | The dmsystem unit itself: `exec=dmell`, `args=<path to icmp-start.dme>`, `type=oneshot`. |
+| [`configs/icmp.ini`](../configs/icmp.ini) | The dmsystem unit: `exec=dmicmp`, `type=module`. |
 
-## Why `type=oneshot`, and why there is no "stop"
+## `service start`/`service stop` both work
 
-`icmp-start.dme` only needs to run once: unlike a `type=simple` unit (a
-server expected to keep running until explicitly stopped), dmicmp stays
-loaded - and answering pings - entirely on its own once `dmod_init()` has
-run, independent of the script or process that triggered it. `type=oneshot`
-tells `libsystemd` this exit is expected, not a crash (see dmsystem's
-configuration docs, "Service type").
-
-This does mean `service stop icmp` has nothing to act on: `libsystemd` stops
-a unit by killing its tracked process
-(`libsystemd_stop_service_internal()`), and a oneshot unit's process is
-already gone by the time it would run. `libsystemd` also has no `ExecStop`-
-style key yet - a unit file has no way to name a separate command to run on
-stop. So turning ping response back off is a deliberate separate step, not
-something `service stop icmp` does: run `icmp-stop.dme` directly.
+Unlike the old `type=oneshot` + `.dme` script setup, `type=module` gives
+`libsystemd` a real notion of "running" for this unit - `service status icmp`
+reports it as running exactly while dmicmp is enabled, and `service stop
+icmp` actually turns ping response off again (disables and unloads the
+module), no separate script to run by hand:
 
 ```bash
-dmell /opt/dmicmp/configs/icmp-stop.dme
+service start icmp
+service status icmp
+service stop icmp
 ```
-
-Whether dmicmp is currently answering pings or not is therefore controlled
-entirely by which of the two scripts was last run - `module load`/`module
-unload` are idempotent-safe either way (loading an already-loaded module or
-unloading an already-unloaded one just fails harmlessly and is logged, it
-does not crash the shell).
 
 ## Enabling at boot
 
 Install dmicmp with its `.dmr` (see the root [README.md](../README.md)), then
-drop `icmp.ini` into `libsystemd`'s units directory and point its `args` at
-wherever `icmp-start.dme` was installed:
+drop `icmp.ini` into `libsystemd`'s units directory:
 
 ```bash
 cp /opt/dmicmp/configs/icmp.ini /etc/dmsystem/units/icmp.ini
-# args= in icmp.ini must match the actual install path, e.g.:
-#   args=/opt/dmicmp/configs/icmp-start.dme
 dmod_loader systemd.dmf --args "/etc/dmsystem/units"
 ```
 
