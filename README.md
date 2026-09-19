@@ -90,7 +90,7 @@ dmicmp answers pings as soon as it's loaded and enabled, but being a
 Library-type module it has no `main()` to spawn on its own - something still
 needs to load it. **[configs/](configs/)** has a
 [dmsystem](https://github.com/choco-technologies/dmsystem)/`libsystemd` unit
-(`icmp.ini`, `exec=dmicmp` `type=module`) that registers dmicmp directly as a
+(`icmp.ini`, `exec=dmicmp` `type=library`) that registers dmicmp directly as a
 service - no separate loader script needed. `service start icmp`/`service
 stop icmp` load+enable / disable+unload it. See
 [docs/service.md](docs/service.md) for the full setup.
@@ -123,7 +123,7 @@ View documentation using `dmf-man dmicmp`.
 
 ```
 dmicmp/
-├── configs/           # dmsystem unit (type=module) to register dmicmp as a service
+├── configs/           # dmsystem unit (type=library) to register dmicmp as a service
 │   └── icmp.ini
 ├── docs/              # Documentation (markdown format)
 ├── include/           # Public headers

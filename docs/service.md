@@ -11,7 +11,7 @@ does that on its own at boot. `configs/icmp.ini` gives
 [dmsystem](https://github.com/choco-technologies/dmsystem)'s `libsystemd` a
 way to do it automatically.
 
-## `exec=dmicmp`, `type=module`
+## `exec=dmicmp`, `type=library`
 
 dmicmp is a **Library**-type DMOD module (see `CMakeLists.txt`), not an
 Application - it has no `main()`, so nothing can spawn it as a process the
@@ -20,24 +20,24 @@ What actually needs to happen is "load this module into the running DMOD
 system, then enable it" - `dmod_init()` (which is what actually registers
 dmicmp with dmip) only runs on *enable*, not on load alone.
 
-`libsystemd` supports this natively via `type=module`: a unit with
-`type=module` has its `exec` loaded and enabled (`Dmod_LoadModuleByName` +
-`Dmod_EnableModule`) when started, and disabled and unloaded
-(`Dmod_DisableModule` + `Dmod_UnloadModule`) when stopped - no separate
-launcher script needed, unlike the process-spawning `simple`/`oneshot` types.
-See dmsystem's
-[configuration docs](https://github.com/choco-technologies/dmsystem/blob/main/app/libsystemd/docs/configuration.md#typemodule-services-backed-by-a-library-module-not-a-process)
+`libsystemd` supports this natively via `type=library` (named after
+`Dmod_ModuleType_Library` in the dmod core): a unit with `type=library` has
+its `exec` loaded and enabled (`Dmod_LoadModuleByName` + `Dmod_EnableModule`)
+when started, and disabled and unloaded (`Dmod_DisableModule` +
+`Dmod_UnloadModule`) when stopped - no separate launcher script needed,
+unlike the process-spawning `simple`/`oneshot` types. See dmsystem's
+[configuration docs](https://github.com/choco-technologies/dmsystem/blob/main/app/libsystemd/docs/configuration.md#typelibrary-services-backed-by-a-library-module-not-a-process)
 for the full mechanism.
 
 ## Files
 
 | File | Does |
 |------|------|
-| [`configs/icmp.ini`](../configs/icmp.ini) | The dmsystem unit: `exec=dmicmp`, `type=module`. |
+| [`configs/icmp.ini`](../configs/icmp.ini) | The dmsystem unit: `exec=dmicmp`, `type=library`. |
 
 ## `service start`/`service stop` both work
 
-Unlike the old `type=oneshot` + `.dme` script setup, `type=module` gives
+Unlike the old `type=oneshot` + `.dme` script setup, `type=library` gives
 `libsystemd` a real notion of "running" for this unit - `service status icmp`
 reports it as running exactly while dmicmp is enabled, and `service stop
 icmp` actually turns ping response off again (disables and unloads the
