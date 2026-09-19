@@ -16,28 +16,29 @@ extern "C" {
  * @brief DMOD ICMP - Public API
  *
  * dmicmp builds/parses ICMP messages (RFC 792 for ICMPv4, RFC 4443 for
- * ICMPv6) and plugs into dmip's protocol dispatch two ways at once
- * (registered in dmod_init(), see src/dmicmp.c):
+ * ICMPv6) and plugs into dmip's protocol dispatch by implementing dmip's
+ * protocol handler DIF (see src/dmicmp.c and dmip.h's "Protocol handler
+ * DIF" section), claiming three numbers at once from one
+ * dmip_protocol_numbers() implementation:
  *
- *  - dmip_register_protocol(DMIP_PROTO_ICMP/_ICMPV6, ...) - to receive
- *    genuine ICMP messages. An incoming Echo Request is answered with an
- *    Echo Reply synchronously, inline in that same callback - it already
- *    runs on whatever thread is pumping the interface (see
- *    dmip_protocol_handler_t in dmip.h), so there's no need for an extra
- *    thread or queue just to answer a ping.
+ *  - DMIP_PROTO_ICMP / DMIP_PROTO_ICMPV6 - genuine ICMP messages. An
+ *    incoming Echo Request is answered with an Echo Reply synchronously,
+ *    inline in the same dmip_protocol_receive() call - it already runs on
+ *    whatever thread is pumping the interface, so there's no need for an
+ *    extra thread or queue just to answer a ping.
  *
- *  - dmip_register_default_protocol(...) - to catch any IP packet whose
- *    protocol nobody else claimed, replying with an ICMPv4 Destination
- *    Unreachable (Protocol Unreachable). See dmip.h's "Protocol
- *    registration" section and docs/dmip.md for why this fallback exists.
+ *  - DMIP_PROTO_DEFAULT - to catch any IP packet whose protocol nobody
+ *    else claimed, replying with an ICMPv4 Destination Unreachable
+ *    (Protocol Unreachable). See dmip.h's "Protocol handler DIF" section
+ *    and docs/dmip.md for why this fallback exists.
  *
  * There is no dmip_v6_send() yet (blocked on a missing NDP module, the
- * same gap dmudp already lives with for sending) - dmicmp still
- * registers for DMIP_PROTO_ICMPV6 and validates/parses incoming ICMPv6
- * messages correctly, but cannot reply to an ICMPv6 Echo Request or send
- * an ICMPv6 error yet; those paths log a warning and drop instead of
- * silently doing nothing. This is a deliberate, temporary limitation -
- * see docs/dmicmp.md.
+ * same gap dmudp already lives with for sending) - dmicmp still claims
+ * DMIP_PROTO_ICMPV6 and validates/parses incoming ICMPv6 messages
+ * correctly, but cannot reply to an ICMPv6 Echo Request or send an ICMPv6
+ * error yet; those paths log a warning and drop instead of silently doing
+ * nothing. This is a deliberate, temporary limitation - see
+ * docs/dmicmp.md.
  *
  * Sending our OWN Echo Request (a "ping") is a separate, caller-driven
  * feature: dmicmp_v4_send_echo_request() just sends, and
@@ -280,7 +281,7 @@ dmod_dmicmp_api(1.0, int, _v4_send_dest_unreachable, ( dmicmp_v4_dest_unreachabl
  *        receive one matching Echo Reply
  *
  * Called from whatever thread is pumping the interface the reply
- * arrived on (same delivery context as dmip_protocol_handler_t - see
+ * arrived on (same delivery context as dmip_protocol_receive - see
  * dmip.h) - `payload` is only valid for the duration of the call, copy
  * it out if you need it afterward. Fires at most once per
  * dmicmp_register_echo_listener() call - register again (with a fresh
@@ -300,9 +301,8 @@ typedef void (*dmicmp_echo_reply_handler_t)( const dmip_addr_t* src, uint16_t id
  * @brief Register `handler` to be called the next time an Echo Reply
  *        carrying `identifier` arrives (either family)
  *
- * One registration per identifier, like dmip_register_protocol() is one
- * registration per protocol number - register a fresh one per
- * outstanding ping, not a long-lived subscription. An Echo Reply for an
+ * One registration per identifier - register a fresh one per outstanding
+ * ping, not a long-lived subscription. An Echo Reply for an
  * identifier with no registered listener is silently dropped, the same
  * tiered fallback shape dmip's own protocol dispatch uses (specific
  * match -> default -> drop) - here there is no "default" tier, just

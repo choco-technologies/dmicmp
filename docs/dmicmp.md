@@ -3,15 +3,15 @@
 ## Overview
 
 DMICMP builds and parses ICMP messages (RFC 792 for ICMPv4, RFC 4443 for
-ICMPv6) and plugs into [dmip](../../dmip)'s protocol dispatch two ways at
-once:
+ICMPv6) and plugs into [dmip](../../dmip)'s protocol dispatch by
+implementing dmip's protocol handler DIF, claiming three numbers at once
+from one `dmip_protocol_numbers()` implementation:
 
-- `dmip_register_protocol(DMIP_PROTO_ICMP/_ICMPV6, ...)` - to receive
-  genuine ICMP messages. An incoming Echo Request is answered with an
-  Echo Reply synchronously, inline in that same callback.
-- `dmip_register_default_protocol(...)` - to catch any IP packet whose
-  protocol nobody else claimed, replying with an ICMPv4 Destination
-  Unreachable. See
+- `DMIP_PROTO_ICMP` / `DMIP_PROTO_ICMPV6` - genuine ICMP messages. An
+  incoming Echo Request is answered with an Echo Reply synchronously,
+  inline in the same `dmip_protocol_receive()` call.
+- `DMIP_PROTO_DEFAULT` - to catch any IP packet whose protocol nobody
+  else claimed, replying with an ICMPv4 Destination Unreachable. See
   [dmip.md](../../dmip/docs/dmip.md#protocol-dispatch) for why this
   fallback exists.
 
@@ -24,7 +24,7 @@ once:
 ├──────────────────────────────────────────────┤
 │                  DMIP                         │
 │   dmip_send(), dmip_checksum(),               │
-│   protocol registration                       │
+│   protocol handler DIF                        │
 ├──────────────────────────────────────────────┤
 │      DMNETBRIDGE / DMROUTE / DMNETIF / DMARP  │
 └──────────────────────────────────────────────┘
@@ -32,15 +32,17 @@ once:
 
 ## No extra thread needed to answer a ping
 
-`dmip_register_protocol()`'s callback already runs on whatever thread is
-pumping the interface a packet arrived on (see
-`dmip_protocol_handler_t` in `dmip.h`) - the same thread
+`dmip_protocol_receive()`'s implementation already runs on whatever
+thread is pumping the interface a packet arrived on (see dmip.h's
+"Protocol handler DIF" section) - the same thread
 `dmnetbridge_handle_netif_rx()` uses. Answering an Echo Request is
 therefore just "build an Echo Reply and call `dmip_send()`, right here,
 right now" - no receive queue, no worker thread, no listener registry
-needed for this direction. That's also true of the default-handler path:
-an unclaimed protocol's Destination Unreachable is sent inline from the
-same callback.
+needed for this direction. That's also true of the fallback path: an
+unclaimed protocol's Destination Unreachable is sent inline from the same
+call, after re-parsing the packet's own protocol field to tell the two
+cases apart (dmicmp implements a single `dmip_protocol_receive()`,
+serving both claims - see `src/dmicmp.c`).
 
 ## Sending our own Echo Request needs a different shape
 
@@ -104,7 +106,7 @@ shape almost exactly, just with `DMIP_PROTO_ICMPV6` in place of
 
 There is no `dmip_v6_send()` yet (blocked on a missing NDP module, RFC
 4861 - the same boundary `dmarp.h`/`dmudp.h` document for their own IPv6
-gaps). dmicmp still registers for `DMIP_PROTO_ICMPV6` and validates/
+gaps). dmicmp still claims `DMIP_PROTO_ICMPV6` and validates/
 parses incoming ICMPv6 messages correctly - there's real value in
 rejecting a malformed or spoofed message even if nothing can be sent back
 yet - but an incoming ICMPv6 Echo Request, or an unclaimed IPv6 protocol

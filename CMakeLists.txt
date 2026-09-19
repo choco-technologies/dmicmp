@@ -50,8 +50,9 @@ set(DMOD_DMR_PATH           ${CMAKE_CURRENT_SOURCE_DIR}/dmicmp.dmr)
 # List of MAL interfaces implemented by this module (leave empty if none)
 set(DMOD_MAL_IMPLS          )
 
-# List of DIF interfaces implemented by this module (leave empty if none)
-set(DMOD_DIF_IMPLS          )
+# List of DIF interfaces implemented by this module (leave empty if none) -
+# dmicmp implements dmip's protocol handler DIF (see src/dmicmp.c).
+set(DMOD_DIF_IMPLS          dmip)
 
 #
 #   dmod_add_library - create a library module
@@ -76,15 +77,15 @@ target_include_directories(${DMOD_MODULE_NAME}_if INTERFACE
 #       ICMP message - dmicmp only builds/parses/checksums the ICMP
 #       message itself and hands it to dmip, plus dmip_checksum(),
 #       dmip_v4_parse_header() (to read the original IP header out of an
-#       unclaimed/undeliverable packet), and dmip_register_protocol()/
-#       _register_default_protocol() to receive completed IP packets
-#       (see src/dmicmp.c).
+#       unclaimed/undeliverable packet), and dmip's protocol handler DIF
+#       (dmip_protocol_receive()/_protocol_numbers()) to receive completed
+#       IP packets (see src/dmicmp.c and DMOD_DIF_IMPLS above).
 # dmroute: header-only - dmip.h needs dmroute_addr_t (re-exported as
 #          dmip_addr_t) directly, even though dmicmp.c itself never calls
 #          a dmroute_* function (same reason dmudp/dmip link it - see
 #          their own CMakeLists.txt).
-# dmnetif: dmnetif_iface_t, the iface parameter dmip_protocol_handler_t
-#          passes to dmicmp_handle_ip_packet() - dmicmp never calls a
+# dmnetif: dmnetif_iface_t, the iface parameter dmip_protocol_receive()
+#          passes to dmicmp's implementation - dmicmp never calls a
 #          dmnetif_* function itself either.
 # dmlist:  backs the echo listener registry
 # dmosi:   mutex guarding that registry
