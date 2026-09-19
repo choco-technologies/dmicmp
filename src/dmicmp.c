@@ -502,7 +502,7 @@ int dmod_init(const Dmod_Config_t *Config)
      * be tagged to the module, or it dies with the first process that happened
      * to pull it in (here: the short-lived dmell running icmp-start.dme),
      * leaving this pointer aimed at whatever gets allocated there next. */
-    g_echo_listeners = dmlist_create(DMOD_CURRENT_ALLOCATOR);
+    g_echo_listeners = dmlist_create();
     g_echo_mutex = dmosi_mutex_create(false);
     if (g_echo_listeners == NULL || g_echo_mutex == NULL)
     {
