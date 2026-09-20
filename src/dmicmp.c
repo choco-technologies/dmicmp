@@ -14,15 +14,17 @@
  *    primitive), dmicmp_v4_send_dest_unreachable(), and
  *    dmicmp_v4_send_echo_request() are all thin wrappers over it.
  *
- *  - Receiving: dmicmp registers with dmip two ways at once (see
- *    dmod_init()) - dmip_register_protocol() for DMIP_PROTO_ICMP/
- *    _ICMPV6, to answer an incoming Echo Request inline and deliver an
- *    incoming Echo Reply to whichever dmicmp_register_echo_listener()
- *    call matches its identifier (a small dmlist-backed table, guarded
- *    by g_echo_mutex - the same shape dmip.c's own protocol dispatch
- *    table uses, just keyed by identifier instead of protocol number);
- *    and dmip_register_default_protocol(), to answer any IP packet whose
- *    protocol nobody claimed with an ICMPv4 Destination Unreachable.
+ *  - Receiving: dmicmp implements dmip's protocol handler DIF (see
+ *    dmip.h) to claim DMIP_PROTO_ICMP/_ICMPV6 (to answer an incoming Echo
+ *    Request inline and deliver an incoming Echo Reply to whichever
+ *    dmicmp_register_echo_listener() call matches its identifier - a
+ *    small dmlist-backed table, guarded by g_echo_mutex) and
+ *    DMIP_PROTO_DEFAULT (to answer any IP packet whose protocol nobody
+ *    else claimed with an ICMPv4 Destination Unreachable) - all three from
+ *    the single dmip_protocol_numbers() implementation below, so
+ *    dmicmp_handle_ip_packet() (dmip_protocol_receive()'s implementation)
+ *    re-parses the enclosing IP header's own protocol field to tell the
+ *    two cases apart, rather than being told which one applies.
  *
  * There is no dmip_v6_send() yet - an incoming ICMPv6 Echo Request or an
  * unclaimed IPv6 protocol can be parsed and checksum-validated correctly,
@@ -366,7 +368,7 @@ static void deliver_echo_reply(const dmip_addr_t* src, uint16_t identifier, uint
  *
  * An Echo Request is answered inline, right here - this function is
  * already running on whatever thread is pumping the interface (see
- * dmip_protocol_handler_t in dmip.h), so there's no need for an extra
+ * dmip_protocol_receive in dmip.h), so there's no need for an extra
  * thread or queue just to answer a ping. An Echo Reply is delivered to
  * whichever dmicmp_register_echo_listener() call matches its identifier,
  * if any. Anything else (Destination Unreachable, any other type/code)
@@ -425,19 +427,13 @@ static void handle_v6_icmp_message(const dmip_addr_t* src, const dmip_addr_t* ds
 }
 
 /**
- * @brief dmip_protocol_handler_t registered for DMIP_PROTO_ICMP and
- *        DMIP_PROTO_ICMPV6 - see dmod_init()
- *
- * Parses `packet`'s IP header to locate the ICMP message and read
- * `src`/`dst`, then hands off to handle_v4_icmp_message()/
- * _v6_icmp_message(). `packet` is borrowed (see dmip_protocol_handler_t's
- * own doc comment in dmip.h) - nothing here keeps a pointer into it past
- * the call.
+ * @brief Handle a packet whose own protocol is DMIP_PROTO_ICMP/_ICMPV6 -
+ *        parses `packet`'s IP header to locate the ICMP message and read
+ *        `src`/`dst`, then hands off to handle_v4_icmp_message()/
+ *        _v6_icmp_message()
  */
-static void dmicmp_handle_ip_packet(dmip_family_t family, dmnetif_iface_t iface, const uint8_t* packet, size_t packet_len)
+static void handle_icmp_protocol(dmip_family_t family, const uint8_t* packet, size_t packet_len)
 {
-    (void)iface;
-
     if (family == dmip_family_v4)
     {
         dmip_v4_header_t ip_header = { 0 };
@@ -458,19 +454,13 @@ static void dmicmp_handle_ip_packet(dmip_family_t family, dmnetif_iface_t iface,
 }
 
 /**
- * @brief dmip_protocol_handler_t registered via
- *        dmip_register_default_protocol() - see dmod_init()
- *
- * Called for any IP packet whose protocol nobody claimed. Never actually
- * reached for a genuine ICMP packet - dmicmp itself claims both
- * DMIP_PROTO_ICMP and DMIP_PROTO_ICMPV6 via dmip_register_protocol(), so
- * dmip's dispatcher routes those to dmicmp_handle_ip_packet() instead,
- * never here.
+ * @brief Handle a packet whose own protocol is neither DMIP_PROTO_ICMP
+ *        nor _ICMPV6 - reached only via the DMIP_PROTO_DEFAULT fallback
+ *        claim (see dmicmp_protocol_numbers() below), i.e. some protocol
+ *        nobody else claimed either
  */
-static void dmicmp_handle_unclaimed_protocol(dmip_family_t family, dmnetif_iface_t iface, const uint8_t* packet, size_t packet_len)
+static void handle_unclaimed_protocol(dmip_family_t family, const uint8_t* packet, size_t packet_len)
 {
-    (void)iface;
-
     if (family == dmip_family_v4)
     {
         dmicmp_v4_send_dest_unreachable(dmicmp_v4_dest_unreachable_protocol, packet, packet_len, DMICMP_DEFAULT_ARP_TIMEOUT_MS);
@@ -485,11 +475,75 @@ static void dmicmp_handle_unclaimed_protocol(dmip_family_t family, dmnetif_iface
     }
 }
 
+/**
+ * @brief Implementation of dmip's dmip_protocol_receive DIF (see dmip.h) -
+ *        the single entry point for both of dmicmp_protocol_numbers()'s
+ *        claims (ICMP/ICMPv6 specifically, and DMIP_PROTO_DEFAULT as the
+ *        fallback for everything else)
+ *
+ * Re-parses just enough of `packet`'s own IP header to read its protocol
+ * number and tell the two cases apart - unlike the old two-callback
+ * registration (dmip_register_protocol() for ICMP/ICMPv6,
+ * dmip_register_default_protocol() for the fallback), a DIF implementation
+ * is one function per module, so dmicmp can no longer rely on dmip having
+ * already made that distinction before calling in. `packet` is borrowed
+ * (see dmip_protocol_receive()'s own doc comment in dmip.h) - nothing here
+ * keeps a pointer into it past the call.
+ */
+dmod_dmip_dif_api_declaration(1.0, dmicmp, void, _protocol_receive, ( dmip_family_t family, dmnetif_iface_t iface, const uint8_t* packet, size_t packet_len ))
+{
+    (void)iface;
+
+    uint8_t protocol;
+    if (family == dmip_family_v4)
+    {
+        dmip_v4_header_t ip_header = { 0 };
+        size_t header_len = 0;
+        if (dmip_v4_parse_header(packet, packet_len, &ip_header, &header_len) != 0)
+            return;
+        protocol = ip_header.protocol;
+    }
+    else /* dmip_family_v6 */
+    {
+        dmip_v6_header_t ip_header = { 0 };
+        if (dmip_v6_parse_header(packet, packet_len, &ip_header) != 0)
+            return;
+        protocol = ip_header.next_header;
+    }
+
+    if (protocol == DMIP_PROTO_ICMP || protocol == DMIP_PROTO_ICMPV6)
+        handle_icmp_protocol(family, packet, packet_len);
+    else
+        handle_unclaimed_protocol(family, packet, packet_len);
+}
+
+/**
+ * @brief Implementation of dmip's dmip_protocol_numbers DIF (see dmip.h) -
+ *        dmicmp claims DMIP_PROTO_ICMP, DMIP_PROTO_ICMPV6, and
+ *        DMIP_PROTO_DEFAULT, all unconditionally
+ */
+dmod_dmip_dif_api_declaration(1.0, dmicmp, size_t, _protocol_numbers, ( uint16_t* out_protocols, size_t max_protocols ))
+{
+    static const uint16_t claimed[] = { DMIP_PROTO_ICMP, DMIP_PROTO_ICMPV6, DMIP_PROTO_DEFAULT };
+    size_t claimed_count = sizeof(claimed) / sizeof(claimed[0]);
+    size_t count = (max_protocols < claimed_count) ? max_protocols : claimed_count;
+
+    for (size_t i = 0; i < count; i++)
+        out_protocols[i] = claimed[i];
+
+    return count;
+}
+
 /* ---- DMOD lifecycle ---- */
 
 /**
  * @brief Module initialization - allocates the echo listener table and
- *        its guarding mutex, then registers with dmip
+ *        its guarding mutex
+ *
+ * No registration with dmip needed anymore - dmicmp_protocol_receive()/
+ * _protocol_numbers() (above) are discovered by dmip via DIF, on demand,
+ * for as long as this module stays loaded and enabled (see dmip.h's
+ * "Protocol handler DIF" section).
  */
 int dmod_init(const Dmod_Config_t *Config)
 {
@@ -510,41 +564,16 @@ int dmod_init(const Dmod_Config_t *Config)
         return -1;
     }
 
-    int result = dmip_register_protocol(DMIP_PROTO_ICMP, dmicmp_handle_ip_packet);
-    if (result != 0)
-    {
-        DMOD_LOG_ERROR("dmicmp: cannot register as the ICMP protocol handler (%d)\n", result);
-        return -1;
-    }
-
-    result = dmip_register_protocol(DMIP_PROTO_ICMPV6, dmicmp_handle_ip_packet);
-    if (result != 0)
-    {
-        DMOD_LOG_ERROR("dmicmp: cannot register as the ICMPv6 protocol handler (%d)\n", result);
-        return -1;
-    }
-
-    result = dmip_register_default_protocol(dmicmp_handle_unclaimed_protocol);
-    if (result != 0)
-    {
-        DMOD_LOG_ERROR("dmicmp: cannot register as dmip's default protocol handler (%d)\n", result);
-        return -1;
-    }
-
     DMOD_LOG_INFO("DMICMP initialized\n");
     return 0;
 }
 
 /**
- * @brief Module deinitialization - unregisters from dmip, frees every
- *        remaining echo listener registration, then the table and mutex
+ * @brief Module deinitialization - frees every remaining echo listener
+ *        registration, then the table and mutex
  */
 int dmod_deinit(void)
 {
-    dmip_unregister_default_protocol();
-    dmip_unregister_protocol(DMIP_PROTO_ICMPV6);
-    dmip_unregister_protocol(DMIP_PROTO_ICMP);
-
     size_t count = dmlist_size(g_echo_listeners);
     for (size_t i = 0; i < count; i++)
     {
