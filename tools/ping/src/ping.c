@@ -11,15 +11,15 @@
  * match it - guards against a stale reply for an earlier request arriving
  * after that request already timed out.
  *
- * <address> must be a literal dotted-decimal IPv4 address - dmicmp has no
- * hostname resolution, and no ICMPv6 send path yet (see dmicmp.h's top
- * comment), so this tool cannot ping an IPv6 destination either.
+ * <address> is an IPv4 literal or a host name resolved through dmdns.
+ * Only IPv4 addresses are requested: dmicmp has no ICMPv6 send path yet.
  */
 #include "dmod.h"
 #include "dmicmp.h"
 #include "dmroute.h"
 #include "dmarp.h"
 #include "dmosi.h"
+#include "dmdns.h"
 #include <string.h>
 
 #define PING_DEFAULT_COUNT       4u
@@ -52,41 +52,6 @@ static bool parse_uint32(const char* s, uint32_t* out)
 
     *out = (uint32_t)value;
     return true;
-}
-
-/* Parses "A.B.C.D" (each octet 0-255) into an IPv4 dmroute_addr_t. */
-static bool parse_ipv4_address(const char* s, dmroute_addr_t* ip)
-{
-    if (s == NULL)
-        return false;
-
-    ip->family = dmroute_family_v4;
-
-    for (int i = 0; i < DMROUTE_IPV4_ADDR_LEN; i++)
-    {
-        if (*s < '0' || *s > '9')
-            return false;
-
-        uint32_t octet = 0;
-        int digits = 0;
-        while (*s >= '0' && *s <= '9')
-        {
-            octet = octet * 10 + (uint32_t)(*s - '0');
-            if (octet > 255 || ++digits > 3)
-                return false;
-            s++;
-        }
-        ip->addr.v4[i] = (uint8_t)octet;
-
-        if (i < DMROUTE_IPV4_ADDR_LEN - 1)
-        {
-            if (*s != '.')
-                return false;
-            s++;
-        }
-    }
-
-    return *s == '\0';
 }
 
 /* Only ever called while a single dmicmp_register_echo_listener() /
@@ -160,8 +125,8 @@ static void print_usage(const char* prog)
     Dmod_Printf("  -W <timeout_ms>    Time to wait for a reply before it's lost, in milliseconds (default: %u)\n", (unsigned)PING_DEFAULT_TIMEOUT_MS);
     Dmod_Printf("  -s <size>          Number of payload bytes to send, 0-%u (default: %u)\n", (unsigned)PING_MAX_PAYLOAD_LEN, (unsigned)PING_DEFAULT_PAYLOAD_LEN);
     Dmod_Printf("\n");
-    Dmod_Printf("<address> must be a literal IPv4 address (e.g. 192.168.1.1) - dmicmp has no\n");
-    Dmod_Printf("hostname resolution and no ICMPv6 send support yet.\n");
+    Dmod_Printf("<address> is an IPv4 address or host name (e.g. 192.168.1.1 or example.com).\n");
+    Dmod_Printf("Host names use dmdns; IPv6 destinations are not supported.\n");
 }
 
 int main(int argc, char* argv[])
@@ -177,13 +142,6 @@ int main(int argc, char* argv[])
     if (argc < 2)
     {
         print_usage(prog);
-        return 1;
-    }
-
-    dmroute_addr_t dst = { 0 };
-    if (!parse_ipv4_address(argv[1], &dst))
-    {
-        Dmod_Printf("%s: invalid IPv4 address '%s'\n", prog, argv[1]);
         return 1;
     }
 
@@ -233,6 +191,26 @@ int main(int argc, char* argv[])
         }
     }
 
+    /* Resolve once, after validating all options. The resolver also handles
+     * literals and the hosts table without sending a DNS query. A zero
+     * timeout selects its default per-server wait, independent of ICMP -W. */
+    dmip_addr_t* addresses = NULL;
+    size_t address_count = 0;
+    int resolve_ret = dmdns_resolve(argv[1], dmip_family_v4, &addresses, &address_count, 0);
+    if (resolve_ret != 0 || address_count == 0)
+    {
+        Dmod_Free(addresses);
+        Dmod_Printf("%s: cannot resolve '%s' to IPv4 (error %d)\n", prog, argv[1], resolve_ret);
+        return 1;
+    }
+    dmroute_addr_t dst = addresses[0];
+    Dmod_Free(addresses);
+
+    char address_str[16]; /* Longest dotted-decimal IPv4 address + NUL. */
+    Dmod_SnPrintf(address_str, sizeof(address_str), "%u.%u.%u.%u",
+                 (unsigned)dst.addr.v4[0], (unsigned)dst.addr.v4[1],
+                 (unsigned)dst.addr.v4[2], (unsigned)dst.addr.v4[3]);
+
     uint8_t* payload = NULL;
     if (payload_len > 0)
     {
@@ -260,7 +238,7 @@ int main(int argc, char* argv[])
      * an identifier and cross-deliver each other's replies. */
     uint16_t identifier = (uint16_t)(dmosi_get_tick_count() & 0xFFFFu);
 
-    Dmod_Printf("PING %s: %u data bytes\n", argv[1], (unsigned)payload_len);
+    Dmod_Printf("PING %s (%s): %u data bytes\n", argv[1], address_str, (unsigned)payload_len);
 
     uint32_t transmitted = 0;
     uint32_t received = 0;
@@ -268,7 +246,7 @@ int main(int argc, char* argv[])
     for (uint32_t seq = 0; seq < count; seq++)
     {
         transmitted++;
-        if (send_one_ping(&dst, argv[1], identifier, (uint16_t)seq, payload, payload_len, wait_timeout_ms) == 0)
+        if (send_one_ping(&dst, address_str, identifier, (uint16_t)seq, payload, payload_len, wait_timeout_ms) == 0)
             received++;
 
         if (seq + 1 < count)

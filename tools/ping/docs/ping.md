@@ -3,17 +3,19 @@
 ## Overview
 
 `ping` is a CLI over [dmicmp](../../..)'s Echo Request/Reply API - it sends
-one or more ICMPv4 Echo Requests to a literal IPv4 address and reports
+one or more ICMPv4 Echo Requests to an IPv4 address or host name and reports
 each matching Echo Reply, or that the request was lost. It never builds
 or parses an ICMP message itself; everything goes through
 `dmicmp_v4_send_echo_request()` to send and
 `dmicmp_register_echo_listener()`/`dmicmp_unregister_echo_listener()` to
 learn about the reply (see `include/dmicmp.h`).
 
-`<address>` must be a literal dotted-decimal IPv4 address (e.g.
-`192.168.1.1`) - dmicmp has no hostname resolution, and no ICMPv6 send
-path yet (see `dmicmp.h`'s top comment), so `ping` cannot resolve a name
-or reach an IPv6 destination either.
+`<address>` is a dotted-decimal IPv4 address or a host name (for example,
+`ping one.one.one.one -c 4`). Names are resolved once through `dmdns`,
+using its hosts table, cache and configured DNS servers (including DHCP).
+The first IPv4 address is used and printed in the banner and reply lines.
+IPv6 destinations are not supported. DNS uses the resolver's default
+per-server timeout; `-W` controls only the wait for an ICMP reply.
 
 ## Usage
 
@@ -32,7 +34,7 @@ Example output:
 
 ```
 $ ping 192.168.1.1
-PING 192.168.1.1: 32 data bytes
+PING 192.168.1.1 (192.168.1.1): 32 data bytes
 32 bytes from 192.168.1.1: icmp_seq=0 time=3 ms
 32 bytes from 192.168.1.1: icmp_seq=1 time=2 ms
 32 bytes from 192.168.1.1: icmp_seq=2 time=2 ms
@@ -77,7 +79,8 @@ next request is already in place by the time a very late reply for the
 - `0` - at least one Echo Request got a matching reply, or `--help`/`-h`
   was given
 - `1` - bad arguments (missing/invalid address, unknown flag, an
-  out-of-range `-c`/`-W`/`-s` value), or every Echo Request was lost
+  out-of-range `-c`/`-W`/`-s` value), resolution failure, or every Echo
+  Request was lost
   (no reply within `-W`'s timeout, or `dmicmp_v4_send_echo_request()`
   itself failed - e.g. no route to the destination)
 
@@ -106,8 +109,9 @@ honest outcome.
 
 - `dmicmp` - builds/sends the Echo Request and delivers the matching Echo
   Reply (see the top-level [dmicmp](../../..) module)
+- `dmdns` - resolves IPv4 literals and host names using the system resolver
 - `dmroute` - the address type (`dmroute_addr_t`, re-exported by `dmicmp`
-  as `dmip_addr_t`) `ping` parses `<address>` into
+  as `dmip_addr_t`) returned by the resolver
 - `dmarp` - `DMARP_DEFAULT_TIMEOUT_MS`, the ARP-resolution timeout
   forwarded to `dmicmp_v4_send_echo_request()`
 - `dmosi` - the semaphore `ping` waits for a reply on, the tick count used

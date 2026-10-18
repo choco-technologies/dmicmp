@@ -21,15 +21,18 @@ Options:
   -s <size>          Number of payload bytes to send, 0-1024 (default: 32)
 ```
 
-`<address>` must be a literal dotted-decimal IPv4 address - dmicmp has no
-hostname resolution, and no ICMPv6 send path yet (see
-[include/dmicmp.h](../../include/dmicmp.h)'s top comment).
+`<address>` is a dotted-decimal IPv4 address or a host name (for example,
+`ping one.one.one.one -c 4`). Names are resolved once through `dmdns`,
+using its hosts table, cache and configured DNS servers (including DHCP).
+The first IPv4 address is used and printed in the banner and reply lines.
+IPv6 destinations are not supported. DNS uses the resolver's default
+per-server timeout; `-W` controls only the wait for an ICMP reply.
 
 Example output:
 
 ```
 $ ping 192.168.1.1
-PING 192.168.1.1: 32 data bytes
+PING 192.168.1.1 (192.168.1.1): 32 data bytes
 32 bytes from 192.168.1.1: icmp_seq=0 time=3 ms
 32 bytes from 192.168.1.1: icmp_seq=1 time=2 ms
 32 bytes from 192.168.1.1: icmp_seq=2 time=2 ms
@@ -63,6 +66,22 @@ itself (see `build/packages/ping/` after a build with `DMOD_DMR_PATH` set,
 and the repository's release workflow).
 
 ## Testing
+
+Run the deterministic DNS/ICMP regression tests on the host without module
+downloads or a network connection:
+
+```bash
+cmake -S tools/ping/tests/native -B build/native-tests
+cmake --build build/native-tests
+ctest --test-dir build/native-tests --output-on-failure
+```
+
+These compile the real CLI with substitutes for DNS and ICMP, checking
+first-IPv4 selection, a single lookup per run, literal input, resolution
+errors, cleanup, and argument validation before resolution. Real network
+resolution and replies should also be checked on a networked target with
+`ping one.one.one.one -c 3`, `ping 1.1.1.1 -c 2`, and
+`ping codex-ping-test.invalid -c 1`.
 
 `tests/ping_test.c` drives this module through `Dmod_RunModule("ping",
 argc, argv)` (loads it, runs `main()`, unloads it again - see
