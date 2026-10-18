@@ -42,6 +42,7 @@ target_link_libraries(${DMOD_MODULE_NAME} dmicmp_if)
 #          pulls in.
 # dmarp: DMARP_DEFAULT_TIMEOUT_MS, the ARP-resolution timeout forwarded to
 #        dmicmp_v4_send_echo_request().
+# dmdns: resolves host names and IPv4 literals before sending.
 # dmosi: dmosi_semaphore_*() to block for the matching Echo Reply (with a
 #        timeout), dmosi_get_tick_count() for round-trip time, and
 #        dmosi_thread_sleep() for the delay between requests.
@@ -51,6 +52,7 @@ dmod_link_modules(${DMOD_MODULE_NAME}
     dmnetif
     dmarp
     dmosi
+    dmdns
 )
 
 add_subdirectory(tests)

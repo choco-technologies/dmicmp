@@ -19,6 +19,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Test ping DNS handling
+        run: |
+          cmake -S tools/ping/tests/native -B build/native-tests
+          cmake --build build/native-tests
+          ctest --test-dir build/native-tests --output-on-failure
+
       - name: Build dmicmp
         run: |
           mkdir -p build
@@ -40,3 +46,6 @@ jobs:
           export DMOD_DMF_DIR=$(pwd)/build/dmf
           dmf-get install -d ${DMOD_DMF_DIR}/test_dmicmp-local.dmd -y
           dmod_loader build/dmf/test_dmicmp.dmf
+          dmf-get install -d ${DMOD_DMF_DIR}/test_ping-local.dmd -y
+          dmf-get install -d ${DMOD_DMF_DIR}/ping-local.dmd -y
+          dmod_loader build/dmf/test_ping.dmf
